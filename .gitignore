@@ -1,3 +1,4 @@
+bin/
 p/**/*
 g/*.log
 *.log
