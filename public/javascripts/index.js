@@ -69,8 +69,8 @@ var App = new Ext.Application({
 										handler: genPlayHandler(i, results[i].track_id,
 																 results[i].timestamp/1000)
 							});
-							// FIXME HACK
-							if (i>8) break;
+							// FIXME only support 6 pads for now
+							if (i==5) break;
 						}
 						// FIXME: HACK
 						pads_panel.add(
