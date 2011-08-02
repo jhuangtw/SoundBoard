@@ -4,6 +4,9 @@ TODOs:
 - onUp/onDown triggers for buttons for more precise control?
 - custom gridview
 - validate input etc
+
+consider <audio style="width:100%; height:15px" src="http://media.soundcloud.com/stream/rYl37zjX02TL?url=http%3A//api.soundcloud.com/tracks/2197494" controls preload="all">
+but doesn't seek?
 */
 
 var App = new Ext.Application({
@@ -20,6 +23,7 @@ var App = new Ext.Application({
     	});
     	
     	soundcloud.addEventListener('onPlayerReady', function(player, data) {
+    			// argh ... hack to preload somehow??
 	 		});
 	 		soundcloud.addEventListener('onMediaDoneBuffering', function(player, data) {
 	 		});
@@ -41,8 +45,6 @@ var App = new Ext.Application({
     	
     	var genPlayHandler = function(i, track_id, timestamp) {
         	return function() {
-        		console.log('btn info: ' + track_id + ': ' + timestamp);
-        		
         		var player = soundcloud.getPlayer('tmpScPlayer'+i);
         		
         		// FIXME artifact on stop?
@@ -79,7 +81,7 @@ var App = new Ext.Application({
 						for (i=0; i<buttons.length; i++) {
 							pads_panel.add({
 										html: generateSCPlayerHtmlCode(0, 'tmpScPlayer'+i, 'http://api.soundcloud.com/tracks/' + omg_global_songid),
-										//hidden: true  // FIXME FIXME
+										// hidden: true // FIXME
 							});
 						}
 						pads_panel.doLayout();
