@@ -1,119 +1,209 @@
-Ext.setup({
-    icon: 'icon.png',
-    glossOnIcon: false,
-    onReady: function() {
-        
-        var feedstylepanel = new Ext.Component({
-            title: 'Feed',
-            scroll: 'vertical',
-            cls: 'sbentry',
-            tpl: [
-                '<tpl for=".">',
-                    '<div class="song">',
-                            '<div class="avatar"><img src="{user.avatar_url}" /></div>',
-                            '<div class="song-info">',
-                                '<h2>{timestamp}</h2>',
-                                '<p>commenter [{user.username}]</p>',
-                            '</div>',
-                    '</div>',
-                '</tpl>'
-            ]
-        });
-        
-        var soundboard = new Ext.Panel({
-        	title: 'Soundboard',
-        	
-        	layout: {
-        		type : 'vbox',
-				pack : 'center',
-				align: 'stretch'
-        	},
-        	
-        	defaults: {
-				layout: {
-					type: 'hbox',
-				},
-				flex: 1,
-				defaults: {
-					xtype: 'button',
-					flex: 1,
-					margin: 10
-				}
-			},
-        });
-        
-        var panel = new Ext.TabPanel({
-            fullscreen: true,
-            cardSwitchAnimation: 'slide',
-            items: [soundboard,feedstylepanel]
-        });
+/*
+TODOs:
+- customized buttons (larger profile pic, on/off state)
+- onUp/onDown triggers for buttons for more precise control?
+- custom gridview
+- validate input etc
+*/
 
-        function playHandler(i, track_id, timestamp) {
+var App = new Ext.Application({
+    name: 'SampleCloudApp',
+    useLoadMask: true,
+    launch: function () {
+    	Ext.regModel('SongInfo', {
+    			fields: [
+    				{ name: 'songurl', type: 'url' }
+    			],
+    			validations: [
+    				{ type: 'presence', field: 'songurl', message: 'please enter url'}
+    			]
+    	});
+    	
+    	soundcloud.addEventListener('onPlayerReady', function(player, data) {
+	 		});
+	 		soundcloud.addEventListener('onMediaDoneBuffering', function(player, data) {
+	 		});
+	 		
+	 		var mySoundCloudApiKey = 'f308155317f2372c0eb4ec31f9329073';
+    	
+    	var generateSCPlayerHtmlCode = function(height, playerid, url) {
+    		// FIXME: smarter sprintf??
+    		var flashurl = 'http://player.soundcloud.com/player.swf?url=' + url + '&enable_api=true&single_active=false&object_id=' + playerid;
+    		
+    		return '<object height="' + height + '" width="100%" id="' + playerid + '" classid="clsid:D27CDB6E-AE6D-11cf-96B8-444553540000">' +
+    		 			 '<param name="movie" value="' + flashurl + '"></param>' +
+    		 			 '<param name="allowscriptaccess" value="always"></param>' +
+    		 			 '<embed allowscriptaccess="always" height="' + height + '" src="' + flashurl + '" type="application/x-shockwave-flash" width="100%" name="' + playerid + '"></embed>' +
+    		 			 '</object>';
+    	}
+    	
+    	var omg_global_songid = -1;
+    	
+    	var genPlayHandler = function(i, track_id, timestamp) {
         	return function() {
         		console.log('btn info: ' + track_id + ': ' + timestamp);
-        		var player;
-        		if (i % 2 == 0) {
-        			player = soundcloud.getPlayer('scPlayer');
-        		} else {
-        			player = soundcloud.getPlayer('scPlayer1');
-        		}
+        		
+        		var player = soundcloud.getPlayer('tmpScPlayer'+i);
         		
         		// FIXME artifact on stop?
         		player.api_seekTo(timestamp);
         		player.api_toggle();
         	}
-        }
+      }
 
-        var handleSCComment = function(results) {        	
-        	var existing_commenter = {};
-        	var to_update = new Array();
-        	var buttons = new Array();
+      var setUpCommentsPadsScreen = function() {
+      	// FIXME: populate the view etc
+				SC.get("/tracks/" + omg_global_songid + "/comments.json", function(results) {
+						var pads_panel = SampleCloudApp.views.commentPads;
+						pads_panel.removeAll();
+						
+						var buttons = new Array();
+						
+						// TODO: de-dup based on timestamp or user?
+						for (i=0; i<results.length; i++) {
+							buttons.push({
+										text: results[i].user.username,
+										icon: results[i].user.avatar_url,	// FIXME too small?
+										handler: genPlayHandler(i, results[i].track_id,
+																 results[i].timestamp/1000)
+							});
+							// FIXME HACK
+							if (i>8) break;
+						}
+						// FIXME: HACK
+						pads_panel.add(
+							{items: buttons.slice(0,3)},
+							{items: buttons.slice(3,6)},
+							{items: buttons.slice(6,9)});
+						
+						for (i=0; i<buttons.length; i++) {
+							pads_panel.add({
+										html: generateSCPlayerHtmlCode(0, 'tmpScPlayer'+i, 'http://api.soundcloud.com/tracks/' + omg_global_songid),
+										//hidden: true  // FIXME FIXME
+							});
+						}
+						pads_panel.doLayout();
+				});
+      }
+      
+    	SampleCloudApp.views.songPickerFormBottomDock = new Ext.Toolbar({
+			dock: 'bottom',
+			items: [
+				{ xtype: 'spacer' },
+				{
+					id: 'done_b',
+					text: 'Next',
+					ui: 'action',
+					disabled: true,
+					handler: function () {
+						setUpCommentsPadsScreen();
+						SampleCloudApp.views.viewport.setActiveItem(
+							'commentPads', {type: 'slide', direction: 'left'});
+					}
+				}
+			]
+    	});
+    	
+    	SampleCloudApp.views.songPickerForm = new Ext.form.FormPanel({
+    		id: 'songPickerForm',
+    		items: [
+    			{
+    				xtype: 'urlfield',
+    				name: 'songurl',
+    				label: 'Soundcloud URL',
+    				value: 'http://soundcloud.com/basisdubstep/basis-nujabes' 
+    			},
+    		 	{
+    		 		xtype: 'button',
+    		 		text: 'Preview',
+    		 		width: '20%',
+    		 		handler: function() {
+    		 			var songPickerForm = SampleCloudApp.views.songPickerForm;
+    		 			songurl = songPickerForm.getValues()['songurl'];
+    		 			
+    		 			SC.initialize({client_id: mySoundCloudApiKey});
+    		 			SC.get("/resolve.json?url=" + songurl, function(results) {
+    		 					omg_global_songid = results.id;
+    		 					
+    		 					var songPickerForm = SampleCloudApp.views.songPickerForm;
+    		 					songPickerForm.add({
+    		 						html: generateSCPlayerHtmlCode(81, 'previewPlayer', results.permalink_url)
+    		 					});
+    		 					songPickerForm.add({
+    		 						xtype: 'textfield',
+    		 						label: 'number of comments',
+    		 						value: results.comment_count
+    		 					});
+    		 					songPickerForm.add({
+    		 						xtype: 'button',
+										text: 'Go!',
+										width: '20%',
+										handler: function () {
+											setUpCommentsPadsScreen();
+											SampleCloudApp.views.viewport.setActiveItem(
+												'commentPads', {type: 'slide', direction: 'left'});
+										}
+    		 					});
+    		 					songPickerForm.doLayout();
+    		 					
+    		 					// TODO: only enable if input validation was successful
+    		 					SampleCloudApp.views.songPickerFormBottomDock.getComponent('done_b').enable();
+    		 			});
+    		 			
+    		 		}
+    		 	},
+    		],
+    		dockedItems: [SampleCloudApp.views.songPickerFormBottomDock]
+    	});
+    	
+    	SampleCloudApp.views.commentPadsBottomDock = new Ext.Toolbar({
+			dock: 'bottom',
+			items: [
+				{ xtype: 'spacer' },
+				{
+					text: 'Back',
+					ui: 'action',
+					handler: function () {
+						SampleCloudApp.views.viewport.setActiveItem(
+							'songPickerForm', {type: 'slide', direction: 'right'});
+					}
+				}
+			]
+    	});
+    	
+			SampleCloudApp.views.commentPads = new Ext.Panel({
+					id : 'commentPads',
+					// FIXME html: 'This is where you press buttonzzz',
+					        	
+        	layout: {
+        		type : 'vbox',
+        		pack : 'center',
+        		align: 'stretch'
+        	},
         	
-        	for (i=0; i<results.length; i++) {
-        		if (existing_commenter[results[i].user.username] != true) {
-        			existing_commenter[results[i].user.username] = true;
-        			to_update.push(results[i]);
-        			buttons.push({
-        					text: results[i].user.username,
-        					icon: results[i].user.avatar_url,	// FIXME too small?
-        					handler: playHandler(i, results[i].track_id,
-        									     results[i].timestamp/1000)
-        			});
+        	defaults: {
+        		layout: {
+        			type: 'hbox',
+        		},
+        		flex: 1,
+        		defaults: {
+        			xtype: 'button',
+        			flex: 1,
+        			margin: 10
         		}
-        	}
+        	},
         	
-        	feedstylepanel.update(to_update);
-        	soundboard.add(
-        		{items: buttons.splice(0,3)},
-        		{items: buttons.splice(3,3)},
-        		{items: buttons.splice(6,3)});
-        	soundboard.doLayout();
-        }
-        
-        var pullstufffromsoundcloud = function() {
-        	SC.initialize({
-        		client_id: "f308155317f2372c0eb4ec31f9329073"
-        	});
-        	
-        	var player = soundcloud.getPlayer('scPlayer');
-        	player.api_load("http://api.soundcloud.com/tracks/17861573");
-        	
-        	var player = soundcloud.getPlayer('scPlayer1');
-        	player.api_load("http://api.soundcloud.com/tracks/17861573");
-        	
-        	SC.get("/tracks/17861573/comments.json", handleSCComment);
-        }
+					dockedItems: [SampleCloudApp.views.commentPadsBottomDock]
+			});
 
-        var tabBar = panel.getTabBar();
-        
-        tabBar.addDocked({
-            xtype: 'button',
-            ui: 'mask',
-            iconCls: 'refresh',
-            dock: 'right',
-            stretch: false,
-            align: 'center',
-            handler: pullstufffromsoundcloud
-        });
+			SampleCloudApp.views.viewport = new Ext.Panel({
+					fullscreen : true,
+					layout : 'card',
+					cardAnimation : 'slide',
+					items: [
+						SampleCloudApp.views.songPickerForm,
+						SampleCloudApp.views.commentPads
+					]
+			});
     }
-});
+})
