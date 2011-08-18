@@ -21,12 +21,11 @@ var App = new Ext.Application({
     				{ type: 'presence', field: 'songurl', message: 'please enter url'}
     			]
     	});
-    	
-    	soundcloud.addEventListener('onPlayerReady', function(player, data) {
-    			// argh ... hack to preload somehow??
-	 		});
-	 		soundcloud.addEventListener('onMediaDoneBuffering', function(player, data) {
-	 		});
+
+    	soundManager.onready(function() {
+    			soundManager.defaultOptions.autoLoad = true;
+    			// FIXME: render buttons
+			});
 	 		
 	 		var mySoundCloudApiKey = 'f308155317f2372c0eb4ec31f9329073';
     	
@@ -42,14 +41,14 @@ var App = new Ext.Application({
     	}
     	
     	var omg_global_songid = -1;
+    	var sm_players = new Array();
     	
     	var genPlayHandler = function(i, track_id, timestamp) {
         	return function() {
-        		var player = soundcloud.getPlayer('tmpScPlayer'+i);
-        		
-        		// FIXME artifact on stop?
-        		player.api_seekTo(timestamp);
-        		player.api_toggle();
+        		var p = sm_players[i]; 
+        		p.setPosition(timestamp);
+        		p.onposition(timestamp + 500, function() { p.stop(); });
+        		p.play();
         	}
       }
 
@@ -64,10 +63,12 @@ var App = new Ext.Application({
 						// TODO: de-dup based on timestamp or user?
 						for (i=0; i<results.length; i++) {
 							buttons.push({
+									  id: 'pad'+i,
 										text: results[i].user.username,
 										icon: results[i].user.avatar_url,	// FIXME too small?
+										// FIXME disabled: true,
 										handler: genPlayHandler(i, results[i].track_id,
-																 results[i].timestamp/1000)
+																 results[i].timestamp)
 							});
 							// FIXME only support 6 pads for now
 							if (i==5) break;
@@ -78,12 +79,19 @@ var App = new Ext.Application({
 							{items: buttons.slice(3,6)},
 							{items: buttons.slice(6,9)});
 						
+						// FIXME: also have a way to garbage collect these
 						for (i=0; i<buttons.length; i++) {
-							pads_panel.add({
-										html: generateSCPlayerHtmlCode(0, 'tmpScPlayer'+i, 'http://api.soundcloud.com/tracks/' + omg_global_songid),
-										// hidden: true // FIXME
+							var sp = soundManager.createSound({
+												id: 'tmpSmPlayer' + i,
+												url: 'http://api.soundcloud.com/tracks/' + omg_global_songid + '/stream?client_id='+mySoundCloudApiKey,
+												autoPlay: false,
+												volume: 50,
+												// FIXME onload: function() { console.log(SampleCloudApp.views.commentPads.getComponent('pad'+i)); SampleCloudApp.views.commentPads.getComponent('pad'+i).enable(); }
 							});
+							sp.load();
+							sm_players.push(sp);
 						}
+						
 						pads_panel.doLayout();
 				});
       }
@@ -113,7 +121,7 @@ var App = new Ext.Application({
     				xtype: 'urlfield',
     				name: 'songurl',
     				label: 'Soundcloud URL',
-    				value: 'http://soundcloud.com/basisdubstep/basis-nujabes' 
+    				value: 'http://soundcloud.com/wick-it/austin-powers-vs-big-k-r-i-t' 
     			},
     		 	{
     		 		xtype: 'button',
@@ -135,6 +143,16 @@ var App = new Ext.Application({
     		 						xtype: 'textfield',
     		 						label: 'number of comments',
     		 						value: results.comment_count
+    		 					});
+    		 					songPickerForm.add({
+    		 						xtype: 'textfield',
+    		 						label: 'can stream',
+    		 						value: results.streamable
+    		 					});
+    		 					songPickerForm.add({
+    		 						xtype: 'textfield',
+    		 						label: 'can download',
+    		 						value: results.downloadable
     		 					});
     		 					songPickerForm.add({
     		 						xtype: 'button',
