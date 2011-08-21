@@ -12,21 +12,20 @@ but doesn't seek?
 var App = new Ext.Application({
     name: 'SampleCloudApp',
     useLoadMask: true,
+    fullscreen: true,
+    autoInitViewport: false,
     launch: function () {
-    	Ext.regModel('SongInfo', {
-    			fields: [
-    				{ name: 'songurl', type: 'url' }
-    			],
-    			validations: [
-    				{ type: 'presence', field: 'songurl', message: 'please enter url'}
-    			]
-    	});
-
+    	this.launched = true;
+    	// launch main app after soundManager is ready to go.
+    	// TODO: handle any error here? in case soundManager fails to init
     	soundManager.onready(function() {
     			soundManager.defaultOptions.autoLoad = true;
-    			// FIXME: render buttons
+    			App.mainLaunch();
 			});
-	 		
+			
+      //this.mainLaunch();
+    },
+    mainLaunch: function() {    	
 	 		var mySoundCloudApiKey = 'f308155317f2372c0eb4ec31f9329073';
     	
     	var generateSCPlayerHtmlCode = function(height, playerid, url) {
@@ -85,7 +84,7 @@ var App = new Ext.Application({
 												id: 'tmpSmPlayer' + i,
 												url: 'http://api.soundcloud.com/tracks/' + omg_global_songid + '/stream?client_id='+mySoundCloudApiKey,
 												autoPlay: false,
-												volume: 50,
+												volume: 70,
 												// FIXME onload: function() { console.log(SampleCloudApp.views.commentPads.getComponent('pad'+i)); SampleCloudApp.views.commentPads.getComponent('pad'+i).enable(); }
 							});
 							sp.load();
@@ -129,49 +128,57 @@ var App = new Ext.Application({
     		 		width: '20%',
     		 		handler: function() {
     		 			var songPickerForm = SampleCloudApp.views.songPickerForm;
-    		 			songurl = songPickerForm.getValues()['songurl'];
+    		 			var songurl = songPickerForm.getValues()['songurl'];
     		 			
     		 			SC.initialize({client_id: mySoundCloudApiKey});
     		 			SC.get("/resolve.json?url=" + songurl, function(results) {
     		 					omg_global_songid = results.id;
-    		 					
-    		 					var songPickerForm = SampleCloudApp.views.songPickerForm;
-    		 					songPickerForm.add({
-    		 						html: generateSCPlayerHtmlCode(81, 'previewPlayer', results.permalink_url)
-    		 					});
-    		 					songPickerForm.add({
-    		 						xtype: 'textfield',
-    		 						label: 'number of comments',
-    		 						value: results.comment_count
-    		 					});
-    		 					songPickerForm.add({
-    		 						xtype: 'textfield',
-    		 						label: 'can stream',
-    		 						value: results.streamable
-    		 					});
-    		 					songPickerForm.add({
-    		 						xtype: 'textfield',
-    		 						label: 'can download',
-    		 						value: results.downloadable
-    		 					});
-    		 					songPickerForm.add({
-    		 						xtype: 'button',
-										text: 'Go!',
-										width: '20%',
-										handler: function () {
-											setUpCommentsPadsScreen();
-											SampleCloudApp.views.viewport.setActiveItem(
-												'commentPads', {type: 'slide', direction: 'left'});
-										}
-    		 					});
+    		 					var can_be_padified = !(results.comment_count < 2);
+    		 					songPickerForm.getComponent('formPlayer').setVisible(true).update(generateSCPlayerHtmlCode(81, 'previewPlayer', results.permalink_url));
+    		 					songPickerForm.getComponent('formNumComments').setVisible(true).setValue(results.comment_count);
+    		 					songPickerForm.getComponent('formCanStream').setVisible(true).setValue(results.streamable);
+    		 					songPickerForm.getComponent('formGo').setVisible(can_be_padified);
     		 					songPickerForm.doLayout();
     		 					
-    		 					// TODO: only enable if input validation was successful
-    		 					SampleCloudApp.views.songPickerFormBottomDock.getComponent('done_b').enable();
-    		 			});
-    		 			
-    		 		}
+    		 					if (!can_be_padified) {
+    		 						Ext.Msg.alert('too few comments :(', 'please try a song with more comments', Ext.emptyFn);
+    		 						SampleCloudApp.views.songPickerFormBottomDock.getComponent('done_b').disable();
+    		 					} else {
+    		 						SampleCloudApp.views.songPickerFormBottomDock.getComponent('done_b').enable();
+    		 					}
+    		 			});  // resolve callback
+    		 		}  // button handler function
     		 	},
+    		 	
+    		 	{
+    		 		id: 'formPlayer',
+    		 		xtype: 'component',
+    		 		hidden: true
+    		 	},
+    		 	{
+						 id: 'formNumComments',
+				  xtype: 'textfield',
+					label: 'number of comments',
+					hidden: true
+    		 	},
+    		 	{
+						 id: 'formCanStream',
+					xtype: 'textfield',
+					label: 'can stream',
+					hidden: true
+    		 	},
+    		 	{
+						 id: 'formGo',
+					xtype: 'button',
+					 text: 'Go!',
+					width: '20%',
+					handler: function () {
+						setUpCommentsPadsScreen();
+						SampleCloudApp.views.viewport.setActiveItem(
+							'commentPads', {type: 'slide', direction: 'left'});
+						},
+					hidden: true
+					}
     		],
     		dockedItems: [SampleCloudApp.views.songPickerFormBottomDock]
     	});
@@ -193,8 +200,6 @@ var App = new Ext.Application({
     	
 			SampleCloudApp.views.commentPads = new Ext.Panel({
 					id : 'commentPads',
-					// FIXME html: 'This is where you press buttonzzz',
-					        	
         	layout: {
         		type : 'vbox',
         		pack : 'center',
@@ -212,7 +217,6 @@ var App = new Ext.Application({
         			margin: 10
         		}
         	},
-        	
 					dockedItems: [SampleCloudApp.views.commentPadsBottomDock]
 			});
 
