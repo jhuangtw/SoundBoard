@@ -1,12 +1,8 @@
 /*
 TODOs:
 - customized buttons (larger profile pic, on/off state)
-- onUp/onDown triggers for buttons for more precise control?
+- onUp/onDown triggers for buttons for more precise playback length control?
 - custom gridview
-- validate input etc
-
-consider <audio style="width:100%; height:15px" src="http://media.soundcloud.com/stream/rYl37zjX02TL?url=http%3A//api.soundcloud.com/tracks/2197494" controls preload="all">
-but doesn't seek?
 */
 
 var App = new Ext.Application({
@@ -16,21 +12,56 @@ var App = new Ext.Application({
     autoInitViewport: false,
     launch: function () {
     	this.launched = true;
-    	// launch main app after soundManager is ready to go.
-    	// TODO: handle any error here? in case soundManager fails to init
+    	
+    	soundManager.ontimeout(function() {
+    			Ext.Msg.alert('aw snap ...', 'looks like flash died :( try reloading the browser', Ext.emptyFn);
+			});
     	soundManager.onready(function() {
     			soundManager.defaultOptions.autoLoad = true;
     			App.mainLaunch();
 			});
-			
-      //this.mainLaunch();
     },
     mainLaunch: function() {    	
 	 		var mySoundCloudApiKey = 'f308155317f2372c0eb4ec31f9329073';
+	 		var omg_global_songid = -1;
+    	var sm_players = new Array();
+	 		
+	 		Ext.regModel('Comment', {
+				fields: [
+					{name: 'user',        type: 'string'},
+					{name: 'comment', 		type: 'string'},
+					{name: 'timestamp',   type: 'integer'},
+					{name: 'thumb_url',   type: 'string'}
+				]
+			});
+			
+			var CommentsStore = new Ext.data.Store({
+					model: 'Comment',
+					proxy: {
+							type: 'sessionstorage',
+							id: 'shoppingCart'
+					}
+			});
+			
+			/*  deprecated ...
+			SampleCloudApp.views.commentsListView = new Ext.DataView({
+					store: CommentsStore,
+					tpl: new Ext.XTemplate(
+							'<tpl for=".">',
+									'<div class="comment-user" id="{user}">',
+											'<img src="{thumb_url}" />',
+											'<div class="button">{comment}</div>',
+									'</div>',
+							'</tpl>'
+					),
+					itemSelector:'div.comment-user',
+					emptyText: 'No comment to display'
+			});
+			*/
     	
     	var generateSCPlayerHtmlCode = function(height, playerid, url) {
-    		// FIXME: smarter sprintf??
-    		var flashurl = 'http://player.soundcloud.com/player.swf?url=' + url + '&enable_api=true&single_active=false&object_id=' + playerid;
+    		var flashurl = 'http://player.soundcloud.com/player.swf?url=' + url +
+    				'&enable_api=true&single_active=false&object_id=' + playerid;
     		
     		return '<object height="' + height + '" width="100%" id="' + playerid + '" classid="clsid:D27CDB6E-AE6D-11cf-96B8-444553540000">' +
     		 			 '<param name="movie" value="' + flashurl + '"></param>' +
@@ -39,59 +70,81 @@ var App = new Ext.Application({
     		 			 '</object>';
     	}
     	
-    	var omg_global_songid = -1;
-    	var sm_players = new Array();
-    	
     	var genPlayHandler = function(i, track_id, timestamp) {
         	return function() {
         		var p = sm_players[i]; 
         		p.setPosition(timestamp);
-        		p.onposition(timestamp + 500, function() { p.stop(); });
+        		p.onposition(timestamp + 600, function() { p.stop(); });
         		p.play();
         	}
       }
-
+      
+      var loadingNotification = new Ext.ActionSheet({
+				items: [{
+						text: 'Loading, please wait ...',
+						handler: function() {
+							loadingNotification.hide();
+						}
+				}]
+			});
+      
+      var genSMDoneLoading = function(i) {
+        	return function() {
+        		SampleCloudApp.views.commentPads.items.items[Math.floor(i/3)].items.items[i%3].enable();
+        		loadingNotification.hide();
+        	}
+      }
+      
       var setUpCommentsPadsScreen = function() {
-      	// FIXME: populate the view etc
+      	for (i=0; i<sm_players.length; i++) {
+					sm_players[i].destruct();
+				}
+				sm_players.length = 0;
+      	
 				SC.get("/tracks/" + omg_global_songid + "/comments.json", function(results) {
 						var pads_panel = SampleCloudApp.views.commentPads;
 						pads_panel.removeAll();
 						
 						var buttons = new Array();
-						
-						// TODO: de-dup based on timestamp or user?
-						for (i=0; i<results.length; i++) {
+
+						var cnt = 0;
+						// FIXME only supports up to 9 pads for now
+						while (results.length > 0 && cnt < 9) {
+							var i = Math.floor(Math.random() * results.length);
+							var timestamp = results[i].timestamp;
 							buttons.push({
-									  id: 'pad'+i,
-										text: results[i].user.username,
-										icon: results[i].user.avatar_url,	// FIXME too small?
-										// FIXME disabled: true,
-										handler: genPlayHandler(i, results[i].track_id,
-																 results[i].timestamp)
+									  id: 'pad'+cnt,
+										text: results[i].user.username + '<br/>@ ' + Math.floor(timestamp/1000/60) + ':' + Math.floor(timestamp/1000%60),
+										icon: results[i].user.avatar_url,
+										iconAlign: 'top',
+										disabled: true,
+										width: 100,
+										height: 100,
+										handler: genPlayHandler(cnt, results[i].track_id, timestamp),
 							});
-							// FIXME only support 6 pads for now
-							if (i==5) break;
+							results.splice(i, 1);
+							cnt++;
 						}
-						// FIXME: HACK
+						
 						pads_panel.add(
 							{items: buttons.slice(0,3)},
 							{items: buttons.slice(3,6)},
 							{items: buttons.slice(6,9)});
 						
-						// FIXME: also have a way to garbage collect these
 						for (i=0; i<buttons.length; i++) {
 							var sp = soundManager.createSound({
 												id: 'tmpSmPlayer' + i,
 												url: 'http://api.soundcloud.com/tracks/' + omg_global_songid + '/stream?client_id='+mySoundCloudApiKey,
 												autoPlay: false,
 												volume: 70,
-												// FIXME onload: function() { console.log(SampleCloudApp.views.commentPads.getComponent('pad'+i)); SampleCloudApp.views.commentPads.getComponent('pad'+i).enable(); }
+												onload: genSMDoneLoading(i)
 							});
 							sp.load();
 							sm_players.push(sp);
 						}
 						
 						pads_panel.doLayout();
+						loadingNotification.show();
 				});
       }
       
@@ -102,7 +155,7 @@ var App = new Ext.Application({
 				{
 					id: 'done_b',
 					text: 'Next',
-					ui: 'action',
+					ui: 'forward',
 					disabled: true,
 					handler: function () {
 						setUpCommentsPadsScreen();
@@ -119,12 +172,12 @@ var App = new Ext.Application({
     			{
     				xtype: 'urlfield',
     				name: 'songurl',
-    				label: 'Soundcloud URL',
+    				label: 'soundcloud URL',
     				value: 'http://soundcloud.com/wick-it/austin-powers-vs-big-k-r-i-t' 
     			},
     		 	{
     		 		xtype: 'button',
-    		 		text: 'Preview',
+    		 		text: 'preview',
     		 		width: '20%',
     		 		handler: function() {
     		 			var songPickerForm = SampleCloudApp.views.songPickerForm;
@@ -170,7 +223,7 @@ var App = new Ext.Application({
     		 	{
 						 id: 'formGo',
 					xtype: 'button',
-					 text: 'Go!',
+					 text: 'hit me!',
 					width: '20%',
 					handler: function () {
 						setUpCommentsPadsScreen();
@@ -186,10 +239,17 @@ var App = new Ext.Application({
     	SampleCloudApp.views.commentPadsBottomDock = new Ext.Toolbar({
 			dock: 'bottom',
 			items: [
+				{
+					text: 'Randomize',
+					ui: 'action',
+					handler: function () {
+						setUpCommentsPadsScreen();
+					}
+				},
 				{ xtype: 'spacer' },
 				{
 					text: 'Back',
-					ui: 'action',
+					ui: 'back',
 					handler: function () {
 						SampleCloudApp.views.viewport.setActiveItem(
 							'songPickerForm', {type: 'slide', direction: 'right'});
